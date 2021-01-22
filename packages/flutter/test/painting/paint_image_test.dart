@@ -20,6 +20,7 @@ class TestCanvas implements Canvas {
 void main() {
   late ui.Image image300x300;
   late ui.Image image300x200;
+
   setUpAll(() async {
     image300x300 = await createTestImage(width: 300, height: 300, cache: false);
     image300x200 = await createTestImage(width: 300, height: 200, cache: false);
@@ -106,6 +107,56 @@ void main() {
 
     debugInvertOversizedImages = false;
     FlutterError.onError = oldFlutterError;
+  });
+
+  test('debugInvertOversizedImages smaller than overhead allowance', () async {
+    debugInvertOversizedImages = true;
+    final FlutterExceptionHandler? oldFlutterError = FlutterError.onError;
+
+    final List<String> messages = <String>[];
+    FlutterError.onError = (FlutterErrorDetails details) {
+      messages.add(details.exceptionAsString());
+    };
+
+    try {
+      // Create a 290x290 sized image, which is ~24kb less than the allocated size,
+      // and below the default debugImageOverheadAllowance size of 128kb.
+      const Rect rect = Rect.fromLTWH(50.0, 50.0, 290.0, 290.0);
+      final TestCanvas canvas = TestCanvas();
+
+      paintImage(
+        canvas: canvas,
+        rect: rect,
+        image: image300x300,
+        debugImageLabel: 'TestImage',
+        fit: BoxFit.fill,
+      );
+
+      expect(messages, isEmpty);
+    } finally {
+      debugInvertOversizedImages = false;
+      FlutterError.onError = oldFlutterError;
+    }
+  });
+
+  test('centerSlice with scale ≠ 1', () async {
+    final TestCanvas canvas = TestCanvas();
+    paintImage(
+      canvas: canvas,
+      rect: const Rect.fromLTRB(10, 20, 430, 420),
+      image: image300x300,
+      scale: 2.0,
+      centerSlice: const Rect.fromLTRB(50, 40, 250, 260),
+    );
+
+    final Invocation command = canvas.invocations.firstWhere((Invocation invocation) {
+      return invocation.memberName == #drawImageNine;
+    });
+
+    expect(command, isNotNull);
+    expect(command.positionalArguments[0], equals(image300x300));
+    expect(command.positionalArguments[1], equals(const Rect.fromLTRB(100.0, 80.0, 500.0, 520.0)));
+    expect(command.positionalArguments[2], equals(const Rect.fromLTRB(20.0, 40.0, 860.0, 840.0)));
   });
 
   testWidgets('Reports Image painting', (WidgetTester tester) async {

@@ -37,6 +37,22 @@ void main() {
         );
       });
 
+      testWithoutContext('invalid utf8 throws a tool exit', () {
+        final FileSystem fileSystem = MemoryFileSystem.test();
+        final FlutterProjectFactory projectFactory = FlutterProjectFactory(
+          fileSystem: fileSystem,
+          logger: BufferLogger.test(),
+        );
+        fileSystem.file('pubspec.yaml').writeAsBytesSync(<int>[0xFFFE]);
+
+        /// Technically this should throw a FileSystemException but this is
+        /// currently a bug in package:file.
+        expect(
+          () => projectFactory.fromDirectory(fileSystem.currentDirectory),
+          throwsToolExit(),
+        );
+      });
+
       _testInMemory('fails on invalid pubspec.yaml', () async {
         final Directory directory = globals.fs.directory('myproject');
         directory.childFile('pubspec.yaml')
@@ -116,12 +132,12 @@ void main() {
           FlutterManifest.empty(logger: logger),
           FlutterManifest.empty(logger: logger),
         );
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectNotExists(project.directory);
       });
       _testInMemory('does nothing in plugin or package root project', () async {
         final FlutterProject project = await aPluginProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectNotExists(project.ios.hostAppRoot.childDirectory('Runner').childFile('GeneratedPluginRegistrant.h'));
         expectNotExists(androidPluginRegistrant(project.android.hostAppGradleRoot.childDirectory('app')));
         expectNotExists(project.ios.hostAppRoot.childDirectory('Flutter').childFile('Generated.xcconfig'));
@@ -129,22 +145,22 @@ void main() {
       });
       _testInMemory('injects plugins for iOS', () async {
         final FlutterProject project = await someProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.ios.hostAppRoot.childDirectory('Runner').childFile('GeneratedPluginRegistrant.h'));
       });
       _testInMemory('generates Xcode configuration for iOS', () async {
         final FlutterProject project = await someProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.ios.hostAppRoot.childDirectory('Flutter').childFile('Generated.xcconfig'));
       });
       _testInMemory('injects plugins for Android', () async {
         final FlutterProject project = await someProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(androidPluginRegistrant(project.android.hostAppGradleRoot.childDirectory('app')));
       });
       _testInMemory('updates local properties for Android', () async {
         final FlutterProject project = await someProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.android.hostAppGradleRoot.childFile('local.properties'));
       });
       _testInMemory('Android project not on v2 embedding shows a warning', () async {
@@ -153,18 +169,18 @@ void main() {
         // v1 embedding, as opposed to having <meta-data
         // android:name="flutterEmbedding" android:value="2" />.
 
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expect(testLogger.statusText, contains('https://flutter.dev/go/android-project-migration'));
       });
       _testInMemory('updates local properties for Android', () async {
         final FlutterProject project = await someProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.android.hostAppGradleRoot.childFile('local.properties'));
       });
       testUsingContext('injects plugins for macOS', () async {
         final FlutterProject project = await someProject();
         project.macos.managedDirectory.createSync(recursive: true);
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.macos.managedDirectory.childFile('GeneratedPluginRegistrant.swift'));
       }, overrides: <Type, Generator>{
         FileSystem: () => MemoryFileSystem.test(),
@@ -178,7 +194,7 @@ void main() {
       testUsingContext('generates Xcode configuration for macOS', () async {
         final FlutterProject project = await someProject();
         project.macos.managedDirectory.createSync(recursive: true);
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.macos.generatedXcodePropertiesFile);
       }, overrides: <Type, Generator>{
         FileSystem: () => MemoryFileSystem.test(),
@@ -192,7 +208,7 @@ void main() {
       testUsingContext('injects plugins for Linux', () async {
         final FlutterProject project = await someProject();
         project.linux.cmakeFile.createSync(recursive: true);
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.linux.managedDirectory.childFile('generated_plugin_registrant.h'));
         expectExists(project.linux.managedDirectory.childFile('generated_plugin_registrant.cc'));
       }, overrides: <Type, Generator>{
@@ -207,7 +223,7 @@ void main() {
       testUsingContext('injects plugins for Windows', () async {
         final FlutterProject project = await someProject();
         project.windows.cmakeFile.createSync(recursive: true);
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.windows.managedDirectory.childFile('generated_plugin_registrant.h'));
         expectExists(project.windows.managedDirectory.childFile('generated_plugin_registrant.cc'));
       }, overrides: <Type, Generator>{
@@ -221,14 +237,14 @@ void main() {
       });
       _testInMemory('creates Android library in module', () async {
         final FlutterProject project = await aModuleProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         expectExists(project.android.hostAppGradleRoot.childFile('settings.gradle'));
         expectExists(project.android.hostAppGradleRoot.childFile('local.properties'));
         expectExists(androidPluginRegistrant(project.android.hostAppGradleRoot.childDirectory('Flutter')));
       });
       _testInMemory('creates iOS pod in module', () async {
         final FlutterProject project = await aModuleProject();
-        await project.ensureReadyForPlatformSpecificTooling();
+        await project.regeneratePlatformSpecificTooling();
         final Directory flutter = project.ios.hostAppRoot.childDirectory('Flutter');
         expectExists(flutter.childFile('podhelper.rb'));
         expectExists(flutter.childFile('flutter_export_environment.sh'));
@@ -699,7 +715,10 @@ apply plugin: 'kotlin-android'
 
 Future<FlutterProject> someProject() async {
   final Directory directory = globals.fs.directory('some_project');
-  directory.childFile('.packages').createSync(recursive: true);
+  directory.childDirectory('.dart_tool')
+    .childFile('package_config.json')
+    ..createSync(recursive: true)
+    ..writeAsStringSync('{"configVersion":2,"packages":[]}');
   directory.childDirectory('ios').createSync(recursive: true);
   final Directory androidDirectory = directory
       .childDirectory('android')
@@ -750,7 +769,11 @@ flutter:
 
 Future<FlutterProject> aModuleProject() async {
   final Directory directory = globals.fs.directory('module_project');
-  directory.childFile('.packages').createSync(recursive: true);
+  directory
+    .childDirectory('.dart_tool')
+    .childFile('package_config.json')
+    ..createSync(recursive: true)
+    ..writeAsStringSync('{"configVersion":2,"packages":[]}');
   directory.childFile('pubspec.yaml').writeAsStringSync('''
 name: my_module
 flutter:
@@ -768,27 +791,43 @@ void _testInMemory(String description, Future<void> testMethod()) {
   final FileSystem testFileSystem = MemoryFileSystem(
     style: globals.platform.isWindows ? FileSystemStyle.windows : FileSystemStyle.posix,
   );
-  testFileSystem.file('.packages').writeAsStringSync('\n');
+  testFileSystem
+    .directory('.dart_tool')
+    .childFile('package_config.json')
+    ..createSync(recursive: true)
+    ..writeAsStringSync('{"configVersion":2,"packages":[]}');
   // Transfer needed parts of the Flutter installation folder
   // to the in-memory file system used during testing.
-  transfer(Cache().getArtifactDirectory('gradle_wrapper'), testFileSystem);
+  transfer(Cache(
+    fileSystem: globals.fs,
+    logger: globals.logger,
+    osUtils: globals.os,
+    platform: globals.platform,
+  ).getArtifactDirectory('gradle_wrapper'), testFileSystem);
   transfer(globals.fs.directory(Cache.flutterRoot)
       .childDirectory('packages')
       .childDirectory('flutter_tools')
       .childDirectory('templates'), testFileSystem);
-  transfer(globals.fs.directory(Cache.flutterRoot)
-      .childDirectory('packages')
-      .childDirectory('flutter_tools')
-      .childDirectory('schema'), testFileSystem);
   // Set up enough of the packages to satisfy the templating code.
   final File packagesFile = testFileSystem.directory(Cache.flutterRoot)
       .childDirectory('packages')
       .childDirectory('flutter_tools')
-      .childFile('.packages');
+      .childDirectory('.dart_tool')
+      .childFile('package_config.json');
   final Directory dummyTemplateImagesDirectory = testFileSystem.directory(Cache.flutterRoot).parent;
   dummyTemplateImagesDirectory.createSync(recursive: true);
   packagesFile.createSync(recursive: true);
-  packagesFile.writeAsStringSync('flutter_template_images:${dummyTemplateImagesDirectory.uri}');
+  packagesFile.writeAsStringSync(json.encode(<String, Object>{
+    'configVersion': 2,
+    'packages': <Object>[
+      <String, Object>{
+        'name': 'flutter_template_images',
+        'rootUri': dummyTemplateImagesDirectory.uri.toString(),
+        'packageUri': 'lib/',
+        'languageVersion': '2.6'
+      },
+    ],
+  }));
 
   final FlutterProjectFactory flutterProjectFactory = FlutterProjectFactory(
     fileSystem: testFileSystem,
@@ -801,7 +840,12 @@ void _testInMemory(String description, Future<void> testMethod()) {
     overrides: <Type, Generator>{
       FileSystem: () => testFileSystem,
       ProcessManager: () => FakeProcessManager.any(),
-      Cache: () => Cache(),
+      Cache: () => Cache(
+        logger: globals.logger,
+        fileSystem: globals.fs,
+        osUtils: globals.os,
+        platform: globals.platform,
+      ),
       FlutterProjectFactory: () => flutterProjectFactory,
     },
   );
@@ -891,7 +935,7 @@ String gradleFileWithApplicationId(String id) {
   return '''
 apply plugin: 'com.android.application'
 android {
-    compileSdkVersion 29
+    compileSdkVersion 30
 
     defaultConfig {
         applicationId '$id'
@@ -908,7 +952,7 @@ version '1.0-SNAPSHOT'
 apply plugin: 'com.android.library'
 
 android {
-    compileSdkVersion 29
+    compileSdkVersion 30
 }
 ''';
 }

@@ -390,14 +390,25 @@ dependencies:
         ProcessManager: () => FakeProcessManager.any(),
       });
 
-      testUsingContext('Refreshing the plugin list creates a plugin directory when there are plugins', () async {
-        createFakePlugin(fs);
+      testUsingContext('Refreshing the plugin list creates a sorted plugin directory when there are plugins', () async {
+        createFakePlugins(fs, <String>[
+          'plugin_d',
+          'plugin_a',
+          '/local_plugins/plugin_c',
+          '/local_plugins/plugin_b'
+        ]);
+
         when(iosProject.existsSync()).thenReturn(true);
 
         await refreshPluginsList(flutterProject);
 
         expect(flutterProject.flutterPluginsFile.existsSync(), true);
         expect(flutterProject.flutterPluginsDependenciesFile.existsSync(), true);
+
+        final String pluginsFileContents = flutterProject.flutterPluginsFile.readAsStringSync();
+        expect(pluginsFileContents.indexOf('plugin_a'), lessThan(pluginsFileContents.indexOf('plugin_b')));
+        expect(pluginsFileContents.indexOf('plugin_b'), lessThan(pluginsFileContents.indexOf('plugin_c')));
+        expect(pluginsFileContents.indexOf('plugin_c'), lessThan(pluginsFileContents.indexOf('plugin_d')));
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
@@ -514,7 +525,7 @@ dependencies:
         when(iosProject.existsSync()).thenReturn(true);
         when(macosProject.existsSync()).thenReturn(true);
 
-        await refreshPluginsList(flutterProject);
+        await refreshPluginsList(flutterProject, iosPlatform: true, macOSPlatform: true);
         expect(iosProject.podManifestLock.existsSync(), false);
         expect(macosProject.podManifestLock.existsSync(), false);
       }, overrides: <Type, Generator>{
@@ -533,7 +544,7 @@ dependencies:
         // Since there was no plugins list, the lock files will be invalidated.
         // The second call is where the plugins list is compared to the existing one, and if there is no change,
         // the podfiles shouldn't be invalidated.
-        await refreshPluginsList(flutterProject);
+        await refreshPluginsList(flutterProject, iosPlatform: true, macOSPlatform: true);
         simulatePodInstallRun(iosProject);
         simulatePodInstallRun(macosProject);
 
@@ -549,16 +560,9 @@ dependencies:
     });
 
     group('injectPlugins', () {
-      MockFeatureFlags featureFlags;
       MockXcodeProjectInterpreter xcodeProjectInterpreter;
 
       setUp(() {
-        featureFlags = MockFeatureFlags();
-        when(featureFlags.isLinuxEnabled).thenReturn(false);
-        when(featureFlags.isMacOSEnabled).thenReturn(false);
-        when(featureFlags.isWindowsEnabled).thenReturn(false);
-        when(featureFlags.isWebEnabled).thenReturn(false);
-
         xcodeProjectInterpreter = MockXcodeProjectInterpreter();
         when(xcodeProjectInterpreter.isInstalled).thenReturn(false);
       });
@@ -567,7 +571,7 @@ dependencies:
         when(flutterProject.isModule).thenReturn(false);
         when(androidProject.getEmbeddingVersion()).thenReturn(AndroidEmbeddingVersion.v1);
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -580,14 +584,13 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Registrant uses new embedding if app uses new embedding', () async {
         when(flutterProject.isModule).thenReturn(false);
         when(androidProject.getEmbeddingVersion()).thenReturn(AndroidEmbeddingVersion.v2);
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -600,7 +603,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Registrant uses shim for plugins using old embedding if app uses new embedding', () async {
@@ -611,7 +613,7 @@ dependencies:
         createNewKotlinPlugin2();
         createOldJavaPlugin('plugin3');
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -629,7 +631,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -641,7 +642,7 @@ dependencies:
 
         await expectLater(
           () async {
-            await injectPlugins(flutterProject);
+            await injectPlugins(flutterProject, androidPlatform: true);
           },
           throwsToolExit(
             message: 'The plugin `plugin1` requires your app to be migrated to the Android embedding v2. '
@@ -651,7 +652,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -664,7 +664,7 @@ dependencies:
 
         await expectLater(
           () async {
-            await injectPlugins(flutterProject);
+            await injectPlugins(flutterProject, androidPlatform: true);
           },
           throwsToolExit(
             message: "The plugin `plugin1` doesn't have a main class defined in "
@@ -678,7 +678,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -688,7 +687,7 @@ dependencies:
 
         createDualSupportJavaPlugin4();
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -702,7 +701,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -712,7 +710,7 @@ dependencies:
 
         createDualSupportJavaPlugin4();
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -726,7 +724,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -734,7 +731,7 @@ dependencies:
         when(flutterProject.isModule).thenReturn(true);
         when(androidProject.getEmbeddingVersion()).thenReturn(AndroidEmbeddingVersion.v2);
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -747,7 +744,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Module using old plugin shows warning', () async {
@@ -756,7 +752,7 @@ dependencies:
 
         createOldJavaPlugin('plugin3');
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -767,7 +763,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -777,7 +772,7 @@ dependencies:
 
         createNewJavaPlugin1();
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -789,7 +784,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -799,7 +793,7 @@ dependencies:
 
         createDualSupportJavaPlugin4();
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -811,7 +805,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -822,7 +815,7 @@ dependencies:
         createOldJavaPlugin('plugin3');
         createOldJavaPlugin('plugin4');
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
         final File registrant = flutterProject.directory
           .childDirectory(fs.path.join('android', 'app', 'src', 'main', 'java', 'io', 'flutter', 'plugins'))
@@ -836,7 +829,6 @@ dependencies:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
         XcodeProjectInterpreter: () => xcodeProjectInterpreter,
       });
 
@@ -846,7 +838,7 @@ dependencies:
         final File manifest = fs.file('AndroidManifest.xml');
         when(androidProject.appManifestFile).thenReturn(manifest);
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, androidPlatform: true);
 
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
@@ -855,9 +847,6 @@ dependencies:
 
       testUsingContext("Registrant for web doesn't escape slashes in imports", () async {
         when(flutterProject.isModule).thenReturn(true);
-        when(featureFlags.isWebEnabled).thenReturn(true);
-        when(webProject.existsSync()).thenReturn(true);
-
         final Directory webPluginWithNestedFile =
             fs.systemTempDirectory.createTempSync('web_plugin_with_nested');
         webPluginWithNestedFile.childFile('pubspec.yaml').writeAsStringSync('''
@@ -880,7 +869,7 @@ dependencies:
 web_plugin_with_nested:${webPluginWithNestedFile.childDirectory('lib').uri.toString()}
 ''');
 
-        await injectPlugins(flutterProject);
+        await injectPlugins(flutterProject, webPlatform: true);
 
         final File registrant = flutterProject.directory
             .childDirectory('lib')
@@ -891,12 +880,9 @@ web_plugin_with_nested:${webPluginWithNestedFile.childDirectory('lib').uri.toStr
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Injecting creates generated macos registrant, but does not include Dart-only plugins', () async {
-        when(macosProject.existsSync()).thenReturn(true);
-        when(featureFlags.isMacOSEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(true);
         // Create a plugin without a pluginClass.
         final Directory pluginDirectory = createFakePlugin(fs);
@@ -908,7 +894,7 @@ flutter:
         dartPluginClass: SomePlugin
     ''');
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, macOSPlatform: true);
 
         final File registrantFile = macosProject.managedDirectory.childFile('GeneratedPluginRegistrant.swift');
 
@@ -917,12 +903,9 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('pluginClass: none doesn\'t trigger registrant entry on macOS', () async {
-        when(macosProject.existsSync()).thenReturn(true);
-        when(featureFlags.isMacOSEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(true);
         // Create a plugin without a pluginClass.
         final Directory pluginDirectory = createFakePlugin(fs);
@@ -935,7 +918,7 @@ flutter:
         dartPluginClass: SomePlugin
     ''');
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, macOSPlatform: true);
 
         final File registrantFile = macosProject.managedDirectory.childFile('GeneratedPluginRegistrant.swift');
 
@@ -945,12 +928,9 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Invalid yaml does not crash plugin lookup.', () async {
-        when(macosProject.existsSync()).thenReturn(true);
-        when(featureFlags.isMacOSEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(true);
         // Create a plugin without a pluginClass.
         final Directory pluginDirectory = createFakePlugin(fs);
@@ -958,7 +938,7 @@ flutter:
 "aws ... \"Branch\": $BITBUCKET_BRANCH, \"Date\": $(date +"%m-%d-%y"), \"Time\": $(date +"%T")}\"
     ''');
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, macOSPlatform: true);
 
         final File registrantFile = macosProject.managedDirectory.childFile('GeneratedPluginRegistrant.swift');
 
@@ -966,16 +946,13 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Injecting creates generated Linux registrant', () async {
-        when(linuxProject.existsSync()).thenReturn(true);
-        when(featureFlags.isLinuxEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         createFakePlugin(fs);
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, linuxPlatform: true);
 
         final File registrantHeader = linuxProject.managedDirectory.childFile('generated_plugin_registrant.h');
         final File registrantImpl = linuxProject.managedDirectory.childFile('generated_plugin_registrant.cc');
@@ -986,12 +963,9 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Injecting creates generated Linux registrant, but does not include Dart-only plugins', () async {
-        when(linuxProject.existsSync()).thenReturn(true);
-        when(featureFlags.isLinuxEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         // Create a plugin without a pluginClass.
         final Directory pluginDirectory = createFakePlugin(fs);
@@ -1003,7 +977,7 @@ flutter:
         dartPluginClass: SomePlugin
     ''');
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, linuxPlatform: true);
 
         final File registrantImpl = linuxProject.managedDirectory.childFile('generated_plugin_registrant.cc');
 
@@ -1013,12 +987,9 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('pluginClass: none doesn\'t trigger registrant entry on Linux', () async {
-        when(linuxProject.existsSync()).thenReturn(true);
-        when(featureFlags.isLinuxEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         // Create a plugin without a pluginClass.
         final Directory pluginDirectory = createFakePlugin(fs);
@@ -1031,7 +1002,7 @@ flutter:
         dartPluginClass: SomePlugin
     ''');
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, linuxPlatform: true);
 
         final File registrantImpl = linuxProject.managedDirectory.childFile('generated_plugin_registrant.cc');
 
@@ -1041,34 +1012,28 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Injecting creates generated Linux plugin Cmake file', () async {
-        when(linuxProject.existsSync()).thenReturn(true);
-        when(featureFlags.isLinuxEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         createFakePlugin(fs);
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, linuxPlatform: true);
 
         final File pluginMakefile = linuxProject.generatedPluginCmakeFile;
 
         expect(pluginMakefile.existsSync(), isTrue);
         final String contents = pluginMakefile.readAsStringSync();
         expect(contents, contains('some_plugin'));
-        expect(contents, contains('target_link_libraries(\${BINARY_NAME} PRIVATE \${plugin}_plugin)'));
-        expect(contents, contains('list(APPEND PLUGIN_BUNDLED_LIBRARIES \$<TARGET_FILE:\${plugin}_plugin>)'));
-        expect(contents, contains('list(APPEND PLUGIN_BUNDLED_LIBRARIES \${\${plugin}_bundled_libraries})'));
+        expect(contents, contains(r'target_link_libraries(${BINARY_NAME} PRIVATE ${plugin}_plugin)'));
+        expect(contents, contains(r'list(APPEND PLUGIN_BUNDLED_LIBRARIES $<TARGET_FILE:${plugin}_plugin>)'));
+        expect(contents, contains(r'list(APPEND PLUGIN_BUNDLED_LIBRARIES ${${plugin}_bundled_libraries})'));
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Generated Linux plugin files sorts by plugin name', () async {
-        when(linuxProject.existsSync()).thenReturn(true);
-        when(featureFlags.isLinuxEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         createFakePlugins(fs, <String>[
           'plugin_d',
@@ -1077,7 +1042,7 @@ flutter:
           '/local_plugins/plugin_b'
         ]);
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, linuxPlatform: true);
 
         final File pluginCmakeFile = linuxProject.generatedPluginCmakeFile;
         final File pluginRegistrant = linuxProject.managedDirectory.childFile('generated_plugin_registrant.cc');
@@ -1090,16 +1055,13 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Injecting creates generated Windows registrant', () async {
-        when(windowsProject.existsSync()).thenReturn(true);
-        when(featureFlags.isWindowsEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         createFakePlugin(fs);
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, windowsPlatform: true);
 
         final File registrantHeader = windowsProject.managedDirectory.childFile('generated_plugin_registrant.h');
         final File registrantImpl = windowsProject.managedDirectory.childFile('generated_plugin_registrant.cc');
@@ -1110,12 +1072,9 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Injecting creates generated Windows registrant, but does not include Dart-only plugins', () async {
-        when(windowsProject.existsSync()).thenReturn(true);
-        when(featureFlags.isWindowsEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         // Create a plugin without a pluginClass.
         final Directory pluginDirectory = createFakePlugin(fs);
@@ -1127,7 +1086,7 @@ flutter:
         dartPluginClass: SomePlugin
     ''');
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, windowsPlatform: true);
 
         final File registrantImpl = windowsProject.managedDirectory.childFile('generated_plugin_registrant.cc');
 
@@ -1136,12 +1095,9 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('pluginClass: none doesn\'t trigger registrant entry on Windows', () async {
-        when(windowsProject.existsSync()).thenReturn(true);
-        when(featureFlags.isWindowsEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         // Create a plugin without a pluginClass.
         final Directory pluginDirectory = createFakePlugin(fs);
@@ -1154,7 +1110,7 @@ flutter:
         dartPluginClass: SomePlugin
     ''');
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, windowsPlatform: true);
 
         final File registrantImpl = windowsProject.managedDirectory.childFile('generated_plugin_registrant.cc');
 
@@ -1164,12 +1120,9 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Generated Windows plugin files sorts by plugin name', () async {
-        when(windowsProject.existsSync()).thenReturn(true);
-        when(featureFlags.isWindowsEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
         createFakePlugins(fs, <String>[
           'plugin_d',
@@ -1178,7 +1131,7 @@ flutter:
           '/local_plugins/plugin_b'
         ]);
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, windowsPlatform: true);
 
         final File pluginCmakeFile = windowsProject.generatedPluginCmakeFile;
         final File pluginRegistrant = windowsProject.managedDirectory.childFile('generated_plugin_registrant.cc');
@@ -1191,7 +1144,6 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fs,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
 
       testUsingContext('Generated plugin CMake files always use posix-style paths', () async {
@@ -1199,13 +1151,9 @@ flutter:
         setUpProject(fsWindows);
         createFakePlugin(fsWindows);
 
-        when(linuxProject.existsSync()).thenReturn(true);
-        when(windowsProject.existsSync()).thenReturn(true);
-        when(featureFlags.isLinuxEnabled).thenReturn(true);
-        when(featureFlags.isWindowsEnabled).thenReturn(true);
         when(flutterProject.isModule).thenReturn(false);
 
-        await injectPlugins(flutterProject, checkProjects: true);
+        await injectPlugins(flutterProject, linuxPlatform: true, windowsPlatform: true);
 
         for (final CmakeBasedProject project in <CmakeBasedProject>[linuxProject, windowsProject]) {
           final File pluginCmakefile = project.generatedPluginCmakeFile;
@@ -1217,7 +1165,6 @@ flutter:
       }, overrides: <Type, Generator>{
         FileSystem: () => fsWindows,
         ProcessManager: () => FakeProcessManager.any(),
-        FeatureFlags: () => featureFlags,
       });
     });
 

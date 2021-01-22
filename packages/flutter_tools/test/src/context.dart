@@ -332,9 +332,6 @@ class MockIOSSimulatorUtils extends Mock implements IOSSimulatorUtils {}
 
 class FakeUsage implements Usage {
   @override
-  bool get isFirstRun => false;
-
-  @override
   bool get suppressAnalytics => false;
 
   @override
@@ -414,16 +411,12 @@ class FakeXcodeProjectInterpreter implements XcodeProjectInterpreter {
       BufferLogger.test(),
     );
   }
-}
-
-class MockFlutterVersion extends Mock implements FlutterVersion {
-  MockFlutterVersion({bool isStable = false}) : _isStable = isStable;
-
-  final bool _isStable;
 
   @override
-  bool get isMaster => !_isStable;
+  List<String> xcrunCommand() => <String>['xcrun'];
 }
+
+class MockFlutterVersion extends Mock implements FlutterVersion {}
 
 class MockClock extends Mock implements SystemClock {}
 

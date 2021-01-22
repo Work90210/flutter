@@ -18,13 +18,10 @@ import 'dart:ui' as ui
         PointMode,
         SceneBuilder,
         Vertices;
-import 'dart:ui' show Canvas, Offset;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:vector_math/vector_math_64.dart';
 
 import 'app.dart';
 import 'basic.dart';
@@ -716,6 +713,12 @@ mixin WidgetInspectorService {
     _instance = instance;
   }
 
+  /// Information about the VM service protocol for the running application.
+  ///
+  /// This information is necessary to provide Flutter DevTools deep links in
+  /// error messages.
+  developer.ServiceProtocolInfo? _serviceInfo;
+
   static bool _debugServiceExtensionsRegistered = false;
 
   /// Ground truth tracking what object(s) are currently selected used by both
@@ -880,17 +883,20 @@ mixin WidgetInspectorService {
     registerServiceExtension(
       name: name,
       callback: (Map<String, String> parameters) async {
-        const String argPrefix = 'arg';
         final List<String> args = <String>[];
-        parameters.forEach((String name, String value) {
-          if (name.startsWith(argPrefix)) {
-            final int index = int.parse(name.substring(argPrefix.length));
-            if (index >= args.length) {
-              args.length = index + 1;
-            }
-            args[index] = value;
+        int index = 0;
+        while (true) {
+          final String name = 'arg$index';
+          if (parameters.containsKey(name)) {
+            args.add(parameters[name]!);
+          } else {
+            break;
           }
-        });
+          index++;
+        }
+        // Verify that the only arguments other than perhaps 'isolateId' are
+        // arguments we have already handled.
+        assert(index == parameters.length || (index == parameters.length - 1 && parameters.containsKey('isolateId')));
         return <String, Object?>{'result': await callback(args)};
       },
     );
@@ -957,7 +963,15 @@ mixin WidgetInspectorService {
   /// Structured errors provide semantic information that can be used by IDEs
   /// to enhance the display of errors with rich formatting.
   bool isStructuredErrorsEnabled() {
-    return const bool.fromEnvironment('flutter.inspector.structuredErrors');
+    // This is a debug mode only feature and will default to false for
+    // profile mode.
+    bool enabled = false;
+    assert(() {
+      // TODO(kenz): add support for structured errors on the web.
+      enabled = const bool.fromEnvironment('flutter.inspector.structuredErrors', defaultValue: !kIsWeb);
+      return true;
+    }());
+    return enabled;
   }
 
   /// Called to register service extensions.
@@ -968,6 +982,12 @@ mixin WidgetInspectorService {
   ///  * [BindingBase.initServiceExtensions], which explains when service
   ///    extensions can be used.
   void initServiceExtensions(_RegisterServiceExtensionCallback registerServiceExtensionCallback) {
+    if (!kIsWeb) {
+      developer.Service.getInfo().then((developer.ServiceProtocolInfo info) {
+        _serviceInfo = info;
+      });
+    }
+
     _structuredExceptionHandler = _reportError;
     if (isStructuredErrorsEnabled()) {
       FlutterError.onError = _structuredExceptionHandler;
@@ -1377,6 +1397,46 @@ mixin WidgetInspectorService {
     return false;
   }
 
+  /// Returns a DevTools uri linking to a specific element on the inspector page.
+  String? _devToolsInspectorUriForElement(Object? object) {
+    if (activeDevToolsServerAddress != null && _serviceInfo != null) {
+      final Uri? vmServiceUri = _serviceInfo!.serverUri;
+      if (vmServiceUri != null) {
+        final String? inspectorRef = toId(object, _consoleObjectGroup);
+        if (inspectorRef != null) {
+          return devToolsInspectorUri(vmServiceUri, inspectorRef);
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Returns the DevTools inspector uri for the given vm service connection and
+  /// inspector reference.
+  @visibleForTesting
+  String devToolsInspectorUri(Uri vmServiceUri, String inspectorRef) {
+    final Uri uri = Uri.parse(activeDevToolsServerAddress!).replace(
+      queryParameters: <String, dynamic>{
+        'uri': '$vmServiceUri',
+        'inspectorRef': inspectorRef,
+      },
+    );
+
+    // We cannot add the '/#/inspector' path by means of
+    // [Uri.replace(path: '/#/inspector')] because the '#' character will be
+    // encoded when we try to print the url as a string. DevTools will not
+    // load properly if this character is encoded in the url.
+    // Related: https://github.com/flutter/devtools/issues/2475.
+    final String devToolsInspectorUri = uri.toString();
+    final int startQueryParamIndex = devToolsInspectorUri.indexOf('?');
+    // The query parameter character '?' should be present because we manually
+    // added query parameters above.
+    assert(startQueryParamIndex != -1);
+    return '${devToolsInspectorUri.substring(0, startQueryParamIndex)}'
+        '/#/inspector'
+        '${devToolsInspectorUri.substring(startQueryParamIndex)}';
+  }
+
   /// Returns JSON representing the chain of [DiagnosticsNode] instances from
   /// root of thee tree to the [Element] or [RenderObject] matching `id`.
   ///
@@ -1541,7 +1601,7 @@ mixin WidgetInspectorService {
   /// object that `diagnosticsNodeId` references only including children that
   /// were created directly by user code.
   ///
-  /// {@template widgets.inspector.trackCreation}
+  /// {@template flutter.widgets.WidgetInspectorService.getChildrenSummaryTree}
   /// Requires [Widget] creation locations which are only available for debug
   /// mode builds when the `--track-widget-creation` flag is enabled on the call
   /// to the `flutter` tool. This flag is enabled by default in debug builds.
@@ -1827,7 +1887,7 @@ mixin WidgetInspectorService {
 
   /// Returns whether [Widget] creation locations are available.
   ///
-  /// {@macro widgets.inspector.trackCreation}
+  /// {@macro flutter.widgets.WidgetInspectorService.getChildrenSummaryTree}
   bool isWidgetCreationTracked() {
     _widgetCreationTracked ??= _WidgetForTypeTests() is _HasCreationLocation;
     return _widgetCreationTracked!;
@@ -2443,8 +2503,8 @@ class _RenderInspectorOverlay extends RenderBox {
   bool get alwaysNeedsCompositing => true;
 
   @override
-  void performResize() {
-    size = constraints.constrain(const Size(double.infinity, double.infinity));
+  Size computeDryLayout(BoxConstraints constraints) {
+    return constraints.constrain(const Size(double.infinity, double.infinity));
   }
 
   @override
@@ -2758,7 +2818,7 @@ const TextStyle _messageStyle = TextStyle(
 /// Interface for classes that track the source code location the their
 /// constructor was called from.
 ///
-/// {@macro widgets.inspector.trackCreation}
+/// {@macro flutter.widgets.WidgetInspectorService.getChildrenSummaryTree}
 // ignore: unused_element
 abstract class _HasCreationLocation {
   _Location get _location;
@@ -2869,15 +2929,26 @@ Iterable<DiagnosticsNode> _describeRelevantUserCode(Element element) {
     // TODO(chunhtai): should print out all the widgets that are about to cross
     // package boundaries.
     if (debugIsLocalCreationLocation(target)) {
-      nodes.add(
+
+      DiagnosticsNode? devToolsDiagnostic;
+      final String? devToolsInspectorUri =
+          WidgetInspectorService.instance._devToolsInspectorUriForElement(target);
+      if (devToolsInspectorUri != null) {
+        devToolsDiagnostic = DiagnosticsNode.message(
+          'To inspect this widget in Flutter DevTools, visit: $devToolsInspectorUri',
+        );
+      }
+
+      nodes.addAll(<DiagnosticsNode>[
         DiagnosticsBlock(
           name: 'The relevant error-causing widget was',
           children: <DiagnosticsNode>[
             ErrorDescription('${target.widget.toStringShort()} ${_describeCreationLocation(target)}'),
           ],
         ),
-      );
-      nodes.add(ErrorSpacer());
+        ErrorSpacer(),
+        if (devToolsDiagnostic != null) ...<DiagnosticsNode>[devToolsDiagnostic, ErrorSpacer()],
+      ]);
       return false;
     }
     return true;
@@ -2891,7 +2962,7 @@ Iterable<DiagnosticsNode> _describeRelevantUserCode(Element element) {
 ///
 /// This always returns false if it is not called in debug mode.
 ///
-/// {@macro widgets.inspector.trackCreation}
+/// {@macro flutter.widgets.WidgetInspectorService.getChildrenSummaryTree}
 ///
 /// Currently is local creation locations are only available for
 /// [Widget] and [Element].
@@ -2911,7 +2982,7 @@ bool debugIsLocalCreationLocation(Object object) {
 ///
 /// ex: "file:///path/to/main.dart:4:3"
 ///
-/// {@macro widgets.inspector.trackCreation}
+/// {@macro flutter.widgets.WidgetInspectorService.getChildrenSummaryTree}
 ///
 /// Currently creation locations are only available for [Widget] and [Element].
 String? _describeCreationLocation(Object object) {
@@ -2921,7 +2992,7 @@ String? _describeCreationLocation(Object object) {
 
 /// Returns the creation location of an object if one is available.
 ///
-/// {@macro widgets.inspector.trackCreation}
+/// {@macro flutter.widgets.WidgetInspectorService.getChildrenSummaryTree}
 ///
 /// Currently creation locations are only available for [Widget] and [Element].
 _Location? _getCreationLocation(Object? object) {

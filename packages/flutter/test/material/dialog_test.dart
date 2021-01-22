@@ -25,7 +25,7 @@ MaterialApp _buildAppWithDialog(Widget dialog, { ThemeData? theme, double textSc
                   context: context,
                   builder: (BuildContext context) {
                     return MediaQuery(
-                      data: MediaQuery.of(context)!.copyWith(textScaleFactor: textScaleFactor),
+                      data: MediaQuery.of(context).copyWith(textScaleFactor: textScaleFactor),
                       child: dialog,
                     );
                   },
@@ -217,6 +217,29 @@ void main() {
     expect(materialWidget.shape, customBorder);
   });
 
+  testWidgets('showDialog builder must be defined', (WidgetTester tester) async {
+    late BuildContext currentBuildContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Builder(
+              builder: (BuildContext context) {
+                currentBuildContext = context;
+                return Container();
+              }
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      () => showDialog<void>(context: currentBuildContext),
+      throwsAssertionError,
+    );
+  });
+
   testWidgets('Simple dialog control test', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -233,7 +256,7 @@ void main() {
 
     final BuildContext context = tester.element(find.text('Go'));
 
-    final Future<int> result = showDialog<int>(
+    final Future<int?> result = showDialog<int>(
       context: context,
       builder: (BuildContext context) {
         return SimpleDialog(
@@ -273,7 +296,7 @@ void main() {
       ),
     );
 
-    final Future<int> result = showDialog<int>(
+    final Future<int?> result = showDialog<int>(
       context: navigator.currentContext!,
       builder: (BuildContext context) {
         return SimpleDialog(
@@ -1188,12 +1211,12 @@ void main() {
 
     await tester.pump();
 
-    expect(MediaQuery.of(outerContext)!.padding, const EdgeInsets.all(50.0));
-    expect(MediaQuery.of(routeContext)!.padding, EdgeInsets.zero);
-    expect(MediaQuery.of(dialogContext)!.padding, EdgeInsets.zero);
-    expect(MediaQuery.of(outerContext)!.viewInsets, const EdgeInsets.only(left: 25.0, bottom: 75.0));
-    expect(MediaQuery.of(routeContext)!.viewInsets, const EdgeInsets.only(left: 25.0, bottom: 75.0));
-    expect(MediaQuery.of(dialogContext)!.viewInsets, EdgeInsets.zero);
+    expect(MediaQuery.of(outerContext).padding, const EdgeInsets.all(50.0));
+    expect(MediaQuery.of(routeContext).padding, EdgeInsets.zero);
+    expect(MediaQuery.of(dialogContext).padding, EdgeInsets.zero);
+    expect(MediaQuery.of(outerContext).viewInsets, const EdgeInsets.only(left: 25.0, bottom: 75.0));
+    expect(MediaQuery.of(routeContext).viewInsets, const EdgeInsets.only(left: 25.0, bottom: 75.0));
+    expect(MediaQuery.of(dialogContext).viewInsets, EdgeInsets.zero);
   });
 
   testWidgets('Dialog widget insets by viewInsets', (WidgetTester tester) async {
@@ -1377,12 +1400,54 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('SimpleDialog does not introduce additional node', (WidgetTester tester) async {
+    final SemanticsTester semantics = SemanticsTester(tester);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: Material(
+          child: Builder(
+            builder: (BuildContext context) {
+              return Center(
+                child: ElevatedButton(
+                  child: const Text('X'),
+                  onPressed: () {
+                    showDialog<void>(
+                      context: context,
+                      builder: (BuildContext context) {
+                        return const SimpleDialog(
+                          title: Text('Title'),
+                          semanticLabel: 'label',
+                        );
+                      },
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('X'));
+    await tester.pumpAndSettle();
+    // A scope route is not focusable in accessibility service.
+    expect(semantics, includesNodeWith(
+      label: 'label',
+      flags: <SemanticsFlag>[SemanticsFlag.namesRoute, SemanticsFlag.scopesRoute],
+    ));
+
+    semantics.dispose();
+  });
+
   testWidgets('Dismissible.confirmDismiss defers to an AlertDialog', (WidgetTester tester) async {
     final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
     final List<int> dismissedItems = <int>[];
 
     // Dismiss is confirmed IFF confirmDismiss() returns true.
-    Future<bool> confirmDismiss (DismissDirection dismissDirection) {
+    Future<bool?> confirmDismiss (DismissDirection dismissDirection) async {
       return showDialog<bool>(
         context: _scaffoldKey.currentContext!,
         barrierDismissible: true, // showDialog() returns null if tapped outside the dialog
@@ -1762,7 +1827,7 @@ void main() {
     final BuildContext context = tester.element(find.text('Go'));
     const RouteSettings exampleSetting = RouteSettings(name: 'simple');
 
-    final Future<int> result = showDialog<int>(
+    final Future<int?> result = showDialog<int>(
       context: context,
       builder: (BuildContext context) {
         return SimpleDialog(
@@ -1771,7 +1836,7 @@ void main() {
             SimpleDialogOption(
               child: const Text('X'),
               onPressed: () {
-                Navigator.of(context)!.pop();
+                Navigator.of(context).pop();
               },
             ),
           ],

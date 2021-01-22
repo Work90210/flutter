@@ -467,11 +467,11 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(
-      MediaQuery.of(outerContext)!.padding,
+      MediaQuery.of(outerContext).padding,
       const EdgeInsets.all(50.0),
     );
     expect(
-      MediaQuery.of(innerContext)!.padding,
+      MediaQuery.of(innerContext).padding,
       const EdgeInsets.only(left: 50.0, right: 50.0, bottom: 50.0),
     );
   });
@@ -725,6 +725,41 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(retrievedRouteSettings, routeSettings);
+  });
+
+  testWidgets('showModalBottomSheet should move along on-screen keyboard',
+          (WidgetTester tester) async {
+    late BuildContext savedContext;
+
+    // Show a keyboard (simulate by space at the bottom of the screen).
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(viewInsets: EdgeInsets.only(bottom: 200)),
+          child: Builder(
+            builder: (BuildContext context) {
+              savedContext = context;
+              return Container();
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(find.text('BottomSheet'), findsNothing);
+
+    showModalBottomSheet<void>(
+      context: savedContext,
+      builder: (BuildContext context) {
+        return const Text('BottomSheet');
+      },
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('BottomSheet'), findsOneWidget);
+    expect(tester.getBottomLeft(find.text('BottomSheet')).dy, 600);
   });
 }
 

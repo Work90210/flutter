@@ -19,6 +19,7 @@ import '../build_info.dart';
 import '../convert.dart';
 import '../device.dart';
 import '../emulator.dart';
+import '../features.dart';
 import '../globals.dart' as globals;
 import '../project.dart';
 import '../resident_runner.dart';
@@ -50,8 +51,6 @@ class DaemonCommand extends FlutterCommand {
   @override
   Future<FlutterCommandResult> runCommand() async {
     globals.printStatus('Starting device daemon...');
-    isRunningFromDaemon = true;
-
     final Daemon daemon = Daemon(
       stdinCommandStream, stdoutCommandResponse,
       notifyingLogger: asLogger<NotifyingLogger>(globals.logger),
@@ -367,28 +366,26 @@ class DaemonDomain extends Domain {
     final String projectRoot = _getStringArg(args, 'projectRoot', required: true);
     final List<String> result = <String>[];
     try {
-      // TODO(jonahwilliams): replace this with a project metadata check once
-      // that has been implemented.
       final FlutterProject flutterProject = FlutterProject.fromDirectory(globals.fs.directory(projectRoot));
-      if (flutterProject.linux.existsSync()) {
+      if (featureFlags.isLinuxEnabled && flutterProject.linux.existsSync()) {
         result.add('linux');
       }
-      if (flutterProject.macos.existsSync()) {
+      if (featureFlags.isMacOSEnabled && flutterProject.macos.existsSync()) {
         result.add('macos');
       }
-      if (flutterProject.windows.existsSync()) {
+      if (featureFlags.isWindowsEnabled && flutterProject.windows.existsSync()) {
         result.add('windows');
       }
-      if (flutterProject.ios.existsSync()) {
+      if (featureFlags.isIOSEnabled && flutterProject.ios.existsSync()) {
         result.add('ios');
       }
-      if (flutterProject.android.existsSync()) {
+      if (featureFlags.isAndroidEnabled && flutterProject.android.existsSync()) {
         result.add('android');
       }
-      if (flutterProject.web.existsSync()) {
+      if (featureFlags.isWebEnabled && flutterProject.web.existsSync()) {
         result.add('web');
       }
-      if (flutterProject.fuchsia.existsSync()) {
+      if (featureFlags.isFuchsiaEnabled && flutterProject.fuchsia.existsSync()) {
         result.add('fuchsia');
       }
       return <String, Object>{
@@ -466,7 +463,6 @@ class AppDomain extends Domain {
 
     final FlutterDevice flutterDevice = await FlutterDevice.create(
       device,
-      flutterProject: flutterProject,
       target: target,
       buildInfo: options.buildInfo,
       platform: globals.platform,
@@ -876,7 +872,6 @@ class DevToolsDomain extends Domain {
   Future<Map<String, dynamic>> serve([ Map<String, dynamic> args ]) async {
     _devtoolsLauncher ??= DevtoolsLauncher.instance;
     final DevToolsServerAddress server = await _devtoolsLauncher.serve();
-
     return<String, dynamic>{
       'host': server?.host,
       'port': server?.port,

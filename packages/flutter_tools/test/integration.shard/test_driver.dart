@@ -169,6 +169,19 @@ abstract class FlutterTestDriver {
     }
   }
 
+  Future<Response> callServiceExtension(
+    String extension, {
+    Map<String, dynamic> args = const <String, dynamic>{},
+  }) async {
+    final VmService vmService = await vmServiceConnectUri('ws://localhost:$vmServicePort/ws');
+    final Isolate isolate = await waitForExtension(vmService, 'ext.flutter.activeDevToolsServerAddress');
+    return await vmService.callServiceExtension(
+      extension,
+      isolateId: isolate.id,
+      args: args,
+    );
+  }
+
   Future<int> quit() => _killGracefully();
 
   Future<int> _killGracefully() async {
@@ -179,7 +192,10 @@ abstract class FlutterTestDriver {
     // it forcefully and it won't terminate child processes, so we need to ensure
     // it's running before terminating.
     await resume().timeout(defaultTimeout)
-        .catchError((Object e) => _debugPrint('Ignoring failure to resume during shutdown'));
+        .catchError((Object e) {
+          _debugPrint('Ignoring failure to resume during shutdown');
+          return null;
+        });
 
     _debugPrint('Sending SIGTERM to $_processPid..');
     io.Process.killPid(_processPid, io.ProcessSignal.sigterm);
@@ -369,7 +385,7 @@ abstract class FlutterTestDriver {
       } else if (!ignoreAppStopEvent && json['event'] == 'app.stop') {
         await subscription.cancel();
         final StringBuffer error = StringBuffer();
-        error.write('Received app.stop event while waiting for $interestingOccurrence\n\n');
+        error.write('Received app.stop event while waiting for $interestingOccurrence\n\n$_errorBuffer');
         if (json['params'] != null && json['params']['error'] != null) {
           error.write('${json['params']['error']}\n\n');
         }
@@ -451,6 +467,7 @@ class FlutterRunTestDriver extends FlutterTestDriver {
     bool singleWidgetReloads = false,
     File pidFile,
     String script,
+    List<String> additionalCommandArgs,
   }) async {
     await _setupProcess(
       <String>[
@@ -471,6 +488,7 @@ class FlutterRunTestDriver extends FlutterTestDriver {
           'flutter-tester',
         if (structuredErrors)
           '--dart-define=flutter.inspector.structuredErrors=true',
+        ...?additionalCommandArgs,
       ],
       withDebugger: withDebugger,
       startPaused: startPaused,
@@ -488,6 +506,7 @@ class FlutterRunTestDriver extends FlutterTestDriver {
     bool pauseOnExceptions = false,
     File pidFile,
     bool singleWidgetReloads = false,
+    List<String> additionalCommandArgs,
   }) async {
     await _setupProcess(
       <String>[
@@ -500,6 +519,7 @@ class FlutterRunTestDriver extends FlutterTestDriver {
         'flutter-tester',
         '--debug-port',
         '$port',
+        ...?additionalCommandArgs,
       ],
       withDebugger: withDebugger,
       startPaused: startPaused,
@@ -820,7 +840,7 @@ class SourcePosition {
   final int column;
 }
 
-Future<Isolate> waitForExtension(VmService vmService) async {
+Future<Isolate> waitForExtension(VmService vmService, String extension) async {
   final Completer<void> completer = Completer<void>();
   await vmService.streamListen(EventStreams.kExtension);
   vmService.onExtensionEvent.listen((Event event) {
@@ -830,7 +850,7 @@ Future<Isolate> waitForExtension(VmService vmService) async {
   });
   final IsolateRef isolateRef = (await vmService.getVM()).isolates.first;
   final Isolate isolate = await vmService.getIsolate(isolateRef.id);
-  if (isolate.extensionRPCs.contains('ext.flutter.brightnessOverride')) {
+  if (isolate.extensionRPCs.contains(extension)) {
     return isolate;
   }
   await completer.future;

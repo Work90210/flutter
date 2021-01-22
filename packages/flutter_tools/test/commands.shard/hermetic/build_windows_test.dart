@@ -28,6 +28,7 @@ final Platform windowsPlatform = FakePlatform(
   environment: <String, String>{
     'PROGRAMFILES(X86)':  r'C:\Program Files (x86)\',
     'FLUTTER_ROOT': flutterRoot,
+    'USERPROFILE': '/',
   }
 );
 final Platform notWindowsPlatform = FakePlatform(
@@ -195,7 +196,8 @@ void main() {
     // edited down for compactness. For instance, where similar lines are
     // repeated in actual output, one or two representative lines are chosen
     // to be included here.
-    const String stdout = r'''Microsoft (R) Build Engine version 16.6.0+5ff7b0c9e for .NET Framework
+    const String stdout = r'''
+Microsoft (R) Build Engine version 16.6.0+5ff7b0c9e for .NET Framework
 Copyright (C) Microsoft Corporation. All rights reserved.
 
   Checking Build System
@@ -227,7 +229,8 @@ C:\foo\windows\runner\main.cpp(17,1): error C2065: 'Baz': undeclared identifier 
       const <String>['windows', '--no-pub']
     );
     // Just the warnings and errors should be surfaced.
-    expect(testLogger.errorText, r'''C:\foo\windows\runner\main.cpp(18): error C2220: the following warning is treated as an error [C:\foo\build\windows\runner\test.vcxproj]
+    expect(testLogger.errorText, r'''
+C:\foo\windows\runner\main.cpp(18): error C2220: the following warning is treated as an error [C:\foo\build\windows\runner\test.vcxproj]
 C:\foo\windows\runner\main.cpp(18): warning C4706: assignment within conditional expression [C:\foo\build\windows\runner\test.vcxproj]
 main.obj : error LNK2019: unresolved external symbol "void __cdecl Bar(void)" (?Bar@@YAXXZ) referenced in function wWinMain [C:\foo\build\windows\runner\test.vcxproj]
 C:\foo\build\windows\runner\Debug\test.exe : fatal error LNK1120: 1 unresolved externals [C:\foo\build\windows\runner\test.vcxproj]
@@ -312,17 +315,17 @@ C:\foo\windows\runner\main.cpp(17,1): error C2065: 'Baz': undeclared identifier 
     expect(configLines, containsAll(<String>[
       r'file(TO_CMAKE_PATH "C:\\flutter" FLUTTER_ROOT)',
       r'file(TO_CMAKE_PATH "C:\\" PROJECT_DIR)',
-      r'  "DART_DEFINES=\"foo%3Da,bar%3Db\""',
-      r'  "DART_OBFUSCATION=\"true\""',
-      r'  "EXTRA_FRONT_END_OPTIONS=\"--enable-experiment%3Dnon-nullable\""',
-      r'  "EXTRA_GEN_SNAPSHOT_OPTIONS=\"--enable-experiment%3Dnon-nullable\""',
-      r'  "SPLIT_DEBUG_INFO=\"C:\\foo\\\""',
-      r'  "TRACK_WIDGET_CREATION=\"true\""',
-      r'  "TREE_SHAKE_ICONS=\"true\""',
-      r'  "FLUTTER_ROOT=\"C:\\flutter\""',
-      r'  "PROJECT_DIR=\"C:\\\""',
-      r'  "FLUTTER_TARGET=\"lib\\other.dart\""',
-      r'  "BUNDLE_SKSL_PATH=\"foo\\bar.sksl.json\""',
+      r'  "DART_DEFINES=foo%3Da,bar%3Db"',
+      r'  "DART_OBFUSCATION=true"',
+      r'  "EXTRA_FRONT_END_OPTIONS=--enable-experiment%3Dnon-nullable"',
+      r'  "EXTRA_GEN_SNAPSHOT_OPTIONS=--enable-experiment%3Dnon-nullable"',
+      r'  "SPLIT_DEBUG_INFO=C:\\foo\\"',
+      r'  "TRACK_WIDGET_CREATION=true"',
+      r'  "TREE_SHAKE_ICONS=true"',
+      r'  "FLUTTER_ROOT=C:\\flutter"',
+      r'  "PROJECT_DIR=C:\\"',
+      r'  "FLUTTER_TARGET=lib\\other.dart"',
+      r'  "BUNDLE_SKSL_PATH=foo\\bar.sksl.json"',
     ]));
   }, overrides: <Type, Generator>{
     FileSystem: () => fileSystem,
@@ -381,14 +384,15 @@ C:\foo\windows\runner\main.cpp(17,1): error C2065: 'Baz': undeclared identifier 
       buildCommand('Release', onRun: () {
         fileSystem.file(r'build\flutter_size_01\snapshot.windows-x64.json')
           ..createSync(recursive: true)
-          ..writeAsStringSync('''[
-{
-  "l": "dart:_internal",
-  "c": "SubListIterable",
-  "n": "[Optimized] skip",
-  "s": 2400
-}
-          ]''');
+          ..writeAsStringSync('''
+[
+  {
+    "l": "dart:_internal",
+    "c": "SubListIterable",
+    "n": "[Optimized] skip",
+    "s": 2400
+  }
+]''');
         fileSystem.file(r'build\flutter_size_01\trace.windows-x64.json')
           ..createSync(recursive: true)
           ..writeAsStringSync('{}');
@@ -403,6 +407,7 @@ C:\foo\windows\runner\main.cpp(17,1): error C2065: 'Baz': undeclared identifier 
     );
 
     expect(testLogger.statusText, contains('A summary of your Windows bundle analysis can be found at'));
+    expect(testLogger.statusText, contains('flutter pub global activate devtools; flutter pub global run devtools --appSizeBase='));
     expect(buffer.toString(), contains('event {category: code-size-analysis, action: windows, label: null, value: null, cd33:'));
   }, overrides: <Type, Generator>{
     FeatureFlags: () => TestFeatureFlags(isWindowsEnabled: true),

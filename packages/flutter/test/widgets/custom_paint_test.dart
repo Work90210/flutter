@@ -58,7 +58,7 @@ class MockPaintingContext extends Fake implements PaintingContext {
 
 void main() {
   testWidgets('Control test for custom painting', (WidgetTester tester) async {
-    final List<String> log = <String>[];
+    final List<String?> log = <String?>[];
     await tester.pumpWidget(CustomPaint(
       painter: TestCustomPainter(
         log: log,
@@ -82,7 +82,7 @@ void main() {
   testWidgets('Throws FlutterError on custom painter incorrect restore/save calls', (
       WidgetTester tester) async {
     final GlobalKey target = GlobalKey();
-    final List<String> log = <String>[];
+    final List<String?> log = <String?>[];
     await tester.pumpWidget(CustomPaint(
       key: target,
       isComplex: true,
@@ -174,7 +174,7 @@ void main() {
   testWidgets('Raster cache hints', (WidgetTester tester) async {
     final GlobalKey target = GlobalKey();
 
-    final List<String> log = <String>[];
+    final List<String?> log = <String?>[];
     await tester.pumpWidget(CustomPaint(
       key: target,
       isComplex: true,
@@ -197,5 +197,21 @@ void main() {
   test('Raster cache hints cannot be set with null painters', () {
     expect(() => CustomPaint(isComplex: true), throwsAssertionError);
     expect(() => CustomPaint(willChange: true), throwsAssertionError);
+  });
+
+  test('RenderCustomPaint consults preferred size for intrinsics when it has no child', () {
+    final RenderCustomPaint inner = RenderCustomPaint(preferredSize: const Size(20, 30));
+    expect(inner.getMinIntrinsicWidth(double.infinity), 20);
+    expect(inner.getMaxIntrinsicWidth(double.infinity), 20);
+    expect(inner.getMinIntrinsicHeight(double.infinity), 30);
+    expect(inner.getMaxIntrinsicHeight(double.infinity), 30);
+  });
+
+  test('RenderCustomPaint does not return infinity for its intrinsics', () {
+    final RenderCustomPaint inner = RenderCustomPaint(preferredSize: const Size.square(double.infinity));
+    expect(inner.getMinIntrinsicWidth(double.infinity), 0);
+    expect(inner.getMaxIntrinsicWidth(double.infinity), 0);
+    expect(inner.getMinIntrinsicHeight(double.infinity), 0);
+    expect(inner.getMaxIntrinsicHeight(double.infinity), 0);
   });
 }

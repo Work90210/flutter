@@ -167,7 +167,7 @@ void main() {
     const int disabledExtensions = kIsWeb ? 2 : 0;
     // If you add a service extension... TEST IT! :-)
     // ...then increment this number.
-    expect(binding.extensions.length, 29 + widgetInspectorExtensionCount - disabledExtensions);
+    expect(binding.extensions.length, 30 + widgetInspectorExtensionCount - disabledExtensions);
 
     expect(console, isEmpty);
     debugPrint = debugPrintThrottled;
@@ -399,21 +399,44 @@ void main() {
 
   test('Service extensions - invertOversizedImages', () async {
     Map<String, dynamic> result;
+    Future<Map<String, dynamic>> pendingResult;
+    bool completed;
 
     expect(binding.frameScheduled, isFalse);
     expect(debugInvertOversizedImages, false);
     result = await binding.testExtension('invertOversizedImages', <String, String>{});
     expect(result, <String, String>{'enabled': 'false'});
     expect(debugInvertOversizedImages, false);
-    result = await binding.testExtension('invertOversizedImages', <String, String>{'enabled': 'true'});
+    expect(binding.frameScheduled, isFalse);
+
+    pendingResult = binding.testExtension('invertOversizedImages', <String, String>{'enabled': 'true'});
+    completed = false;
+    pendingResult.whenComplete(() { completed = true; });
+    await binding.flushMicrotasks();
+    expect(binding.frameScheduled, isTrue);
+    expect(completed, isFalse);
+    await binding.doFrame();
+    await binding.flushMicrotasks();
+    expect(completed, isTrue);
+    expect(binding.frameScheduled, isFalse);
+    result = await pendingResult;
     expect(result, <String, String>{'enabled': 'true'});
     expect(debugInvertOversizedImages, true);
+
     result = await binding.testExtension('invertOversizedImages', <String, String>{});
     expect(result, <String, String>{'enabled': 'true'});
     expect(debugInvertOversizedImages, true);
-    result = await binding.testExtension('invertOversizedImages', <String, String>{'enabled': 'false'});
+    expect(binding.frameScheduled, isFalse);
+
+    pendingResult = binding.testExtension('invertOversizedImages', <String, String>{'enabled': 'false'});
+    await binding.flushMicrotasks();
+    expect(binding.frameScheduled, isTrue);
+    await binding.doFrame();
+    expect(binding.frameScheduled, isFalse);
+    result = await pendingResult;
     expect(result, <String, String>{'enabled': 'false'});
     expect(debugInvertOversizedImages, false);
+
     result = await binding.testExtension('invertOversizedImages', <String, String>{});
     expect(result, <String, String>{'enabled': 'false'});
     expect(debugInvertOversizedImages, false);
@@ -734,5 +757,18 @@ void main() {
     final String brightnessValue = result['value'] as String;
 
     expect(brightnessValue, 'Brightness.light');
+  });
+
+  test('Service extensions - activeDevToolsServerAddress', () async {
+    Map<String, dynamic> result;
+    result = await binding.testExtension('activeDevToolsServerAddress', <String, String>{});
+    String serverAddress = result['value'] as String;
+    expect(serverAddress, '');
+    result = await binding.testExtension('activeDevToolsServerAddress', <String, String>{'value': 'http://127.0.0.1:9101'});
+    serverAddress = result['value'] as String;
+    expect(serverAddress, 'http://127.0.0.1:9101');
+    result = await binding.testExtension('activeDevToolsServerAddress', <String, String>{'value': 'http://127.0.0.1:9102'});
+    serverAddress = result['value'] as String;
+    expect(serverAddress, 'http://127.0.0.1:9102');
   });
 }

@@ -30,12 +30,19 @@ class ThrowingPub implements Pub {
     bool skipPubspecYamlCheck = false,
     bool generateSyntheticPackage = false,
     String flutterRootOverride,
+    bool checkUpToDate = false,
   }) {
     throw UnsupportedError('Attempted to invoke pub during test.');
   }
 
   @override
-  Future<void> interactively(List<String> arguments, {String directory, @required Stdio stdio,}) {
+  Future<void> interactively(
+    List<String> arguments, {
+    String directory,
+    @required Stdio stdio,
+    bool touchesPackageConfig = false,
+    bool generateSyntheticPackage = false,
+  }) {
     throw UnsupportedError('Attempted to invoke pub during test.');
   }
 }

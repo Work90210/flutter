@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:archive/archive.dart';
 import 'package:file/memory.dart';
 import 'package:file/src/interface/file.dart';
 import 'package:file_testing/file_testing.dart';
+import 'package:flutter_tools/src/base/common.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
 import 'package:flutter_tools/src/base/io.dart';
 import 'package:flutter_tools/src/base/logger.dart';
@@ -247,7 +247,7 @@ void main() {
     expect(fileSystem.file('out/test'), isNot(exists));
   });
 
-  testWithoutContext('ArtifactUpdater will de-download a file if unzipping fails', () async {
+  testWithoutContext('ArtifactUpdater will re-download a file if unzipping fails', () async {
     final MockOperatingSystemUtils operatingSystemUtils = MockOperatingSystemUtils();
     final MemoryFileSystem fileSystem = MemoryFileSystem.test();
     final BufferLogger logger = BufferLogger.test();
@@ -295,7 +295,7 @@ void main() {
     expect(fileSystem.file('out/test'), exists);
   });
 
-  testWithoutContext('ArtifactUpdater will bail if unzipping fails more than twice', () async {
+  testWithoutContext('ArtifactUpdater will bail with a tool exit if unzipping fails more than twice', () async {
     final MockOperatingSystemUtils operatingSystemUtils = MockOperatingSystemUtils();
     final MemoryFileSystem fileSystem = MemoryFileSystem.test();
     final BufferLogger logger = BufferLogger.test();
@@ -314,7 +314,7 @@ void main() {
       'test message',
       Uri.parse('http:///test.zip'),
       fileSystem.currentDirectory.childDirectory('out'),
-    ), throwsA(isA<ProcessException>()));
+    ), throwsA(isA<ToolExit>()));
     expect(fileSystem.file('te,[/test'), isNot(exists));
     expect(fileSystem.file('out/test'), isNot(exists));
   });
@@ -338,7 +338,7 @@ void main() {
       'test message',
       Uri.parse('http:///test.zip'),
       fileSystem.currentDirectory.childDirectory('out'),
-    ), throwsA(isA<ArchiveException>()));
+    ), throwsA(isA<ToolExit>()));
     expect(fileSystem.file('te,[/test'), isNot(exists));
     expect(fileSystem.file('out/test'), isNot(exists));
   });
@@ -401,10 +401,7 @@ class MockOperatingSystemUtils extends Mock implements OperatingSystemUtils {
   void unzip(File file, Directory targetDirectory) {
     if (failures > 0) {
       failures -= 1;
-      if (windows) {
-        throw ArchiveException('zip');
-      }
-      throw const ProcessException('zip', <String>[], 'Failed to unzip');
+      throw Exception();
     }
     targetDirectory.childFile(file.fileSystem.path.basenameWithoutExtension(file.path))
       .createSync();
@@ -414,10 +411,7 @@ class MockOperatingSystemUtils extends Mock implements OperatingSystemUtils {
   void unpack(File gzippedTarFile, Directory targetDirectory) {
     if (failures > 0) {
       failures -= 1;
-      if (windows) {
-        throw ArchiveException('zip');
-      }
-      throw const ProcessException('zip', <String>[], 'Failed to unzip');
+      throw Exception();
     }
     targetDirectory.childFile(gzippedTarFile.fileSystem.path.basenameWithoutExtension(gzippedTarFile.path))
       .createSync();
